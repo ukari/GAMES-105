@@ -1,5 +1,11 @@
+from __future__ import annotations
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+from dataclasses import dataclass
+from enum import Enum
+from typing import Union
+from typing import List
+from typing import Tuple
 
 def load_motion_data(bvh_file_path):
     """part2 辅助函数，读取bvh文件"""
@@ -17,7 +23,246 @@ def load_motion_data(bvh_file_path):
         motion_data = np.concatenate(motion_data, axis=0)
     return motion_data
 
+def load_bones_source(bvh_file_path):
+    with open(bvh_file_path, 'r') as f:
+        lines = f.readlines()
+        size = len(lines)
+        for i in range(size):
+            if lines[i].startswith('HIERARCHY'):
+                break
+        for j in range(i+1, size):
+            if lines[j].startswith('MOTION'):
+                break
+        source = []
+        for line in lines[i+1:j]:
+            for word in line.split():
+                source.append(word)
+    return source
 
+class TOKEN:
+    pass
+
+class ROOT(TOKEN):
+    pass
+
+class LPAR(TOKEN):
+    pass
+
+class RPAR(TOKEN):
+    pass
+
+@dataclass
+class STR(TOKEN):
+    value: str
+
+@dataclass
+class INT(TOKEN):
+    value: int
+
+@dataclass
+class FLOAT(TOKEN):
+    value: float
+
+class OFFSET(TOKEN):
+    pass
+
+class CHANNELS(TOKEN):
+    pass
+
+class JOINT(TOKEN):
+    pass
+
+class END(TOKEN):
+    pass
+
+def intp(word):
+    try: 
+        int(word)
+        return True
+    except: return False
+
+def floatp(word):
+    try:
+        float(word)
+        return True
+    except:
+        return False
+
+def token(word: str) -> TOKEN:
+    if word == 'ROOT':
+        return ROOT()
+    if word == '{':
+        return LPAR()
+    if word == '}':
+        return RPAR()
+    if word == 'OFFSET':
+        return OFFSET()
+    if word == 'CHANNELS':
+        return CHANNELS()
+    if word == 'JOINT':
+        return JOINT()
+    if word == 'End':
+        return END()
+    if intp(word):
+        return INT(int(word))
+    if floatp(word):
+        return FLOAT(float(word))
+    if type(word) == str:
+        return STR(word)
+    else:
+        raise Exception('unexcept token word ' + word)
+
+def token_pass(source: List[str]) -> List[TOKEN]:
+    tokens = []
+    for word in source:
+        x = token(word)
+        if (isinstance(x, TOKEN)):
+            tokens.append(x)
+        else:
+            raise Exception('tokenize error')
+    return tokens
+
+@dataclass
+class End:
+    name: str
+    offset: List[float]
+
+@dataclass
+class Joint:
+    name: str
+    offset: List[float]
+    channels: List[float]
+    joints: Union[End, List[Joint]]
+
+@dataclass
+class Root:
+    name: str
+    offset: List[float]
+    channels: List[float]
+    joints: Union[End, List[Joint]]
+
+# V variable, E terminal, S start variable, R relation
+# RootJoint -> root name { Offset Channels EndOrJoints }
+# EndOrJoints -> End | Joints
+# End -> end name { Offset }
+# Joints -> Joint, Joints
+# Joint -> joint name { Offset Channels EndOrJoints }
+# Offset -> offset Floats
+# Floats -> float | float, floats
+# Channels -> channel int Strings
+# Strings -> string | string, Strings
+
+def make_consume_parser(t: type):
+    def consume_parser(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+        token, *xs = tokens
+        if (isinstance(token, t)):
+            return (xs,)
+        else:
+            raise Exception('incorrect ' + t.__name__ + ' token ' + str(token) + ', ' + str(tokens))
+    return consume_parser
+
+def parseRootSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+    return make_consume_parser(ROOT)(tokens)
+
+def parseStr(tokens: List[TOKEN]) -> Tuple(List[TOKEN], str):
+    token, *xs = tokens
+    if (isinstance(token, STR)):
+        return (xs, token.value)
+    else:
+        raise Exception('incorrect STR token ' + str(token) + ', ' + str(tokens))
+
+def parseFloat(tokens: List[TOKEN]) -> Tuple(List[TOKEN], str):
+    token, *xs = tokens
+    if (isinstance(token, FLOAT)):
+        return (xs, token.value)
+    else:
+        raise Exception('incorrect FLOAT token ' + str(token) + ', ' + str(tokens))
+
+def parseInt(tokens: List[TOKEN]) -> Tuple(List[TOKEN], str):
+    token, *xs = tokens
+    if (isinstance(token, INT)):
+        return (xs, token.value)
+    else:
+        raise Exception('incorrect INT token ' + str(token))
+
+def parseLPar(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+    return make_consume_parser(LPAR)(tokens)
+
+def parseRPar(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+    return make_consume_parser(RPAR)(tokens)
+
+def parseOffsetSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+    return make_consume_parser(OFFSET)(tokens)
+
+def parseOffset(tokens: List[TOKEN]) -> Tuple(List[TOKEN], List[float]):
+    (r0,) = parseOffsetSymbol(tokens)
+    (r1, x) = parseFloat(r0)
+    (r2, y) = parseFloat(r1)
+    (r3, z) = parseFloat(r2)
+    return (r3, [x, y, z])
+
+def parseChannelsSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+    return make_consume_parser(CHANNELS)(tokens)
+
+def parseChannels(tokens: List[TOKEN]) -> Tuple(List[TOKEN], List[str]):
+    (r0,) = parseChannelsSymbol(tokens)
+    (r1, num) = parseInt(r0)
+    channels = []
+    for _ in range(num):
+        (r1, channelName) = parseStr(r1)
+        channels.append(channelName)
+    return (r1, channels)
+
+def parseJointSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+    return make_consume_parser(JOINT)(tokens)
+
+def parseJoint(tokens: List[TOKEN]) -> Tuple(List[TOKEN], Joint):
+    (r0,) = parseJointSymbol(tokens)
+    (r1, name) = parseStr(r0)
+    (r2,) = parseLPar(r1)
+    (r3, offset) = parseOffset(r2)
+    (r4, channels) = parseChannels(r3)
+    (r5, joints) = parseJoints(r4, name)
+    (r6,) = parseRPar(r5)
+    return (r6, Joint(name, offset, channels, joints))
+
+def parseEndSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+    return make_consume_parser(END)(tokens)
+
+def parseEnd(tokens: List[TOKEN], parent_name: str) -> Tuple(List[TOKEN], End):
+    (r0,) = parseEndSymbol(tokens)
+    (r1, _name) = parseStr(r0)
+    (r2,) = parseLPar(r1)
+    (r3, offset) = parseOffset(r2)
+    (r4,) = parseRPar(r3)
+    return (r4, End(parent_name + '_end', offset))
+
+def parseJoints(tokens: List[TOKEN], parent_name: str) -> Tuple(List[TOKEN], Union(End, List[Joint])):
+    try:
+        joints = []
+        r1 = tokens
+        while True:
+            (r1, joint) = parseJoint(r1)
+            joints.append(joint)
+    except:
+        if len(joints) > 0:
+            return (r1, joints)
+        else:
+            try:
+                (r0, end) = parseEnd(tokens, parent_name)
+                return (r0, end)
+            except:
+                raise Exception('can not parse joints ' + str(r1))
+
+def parseRoot(tokens: List[TOKEN]) -> Root:
+    (r0,) = parseRootSymbol(tokens)
+    (r1, name) = parseStr(r0)
+    (r2,) = parseLPar(r1)
+    (r3, offset) = parseOffset(r2)
+    (r4, channels) = parseChannels(r3)
+    (r5, joints) = parseJoints(r4, name)
+    (_r6,) = parseRPar(r5)
+    return Root(name, offset, channels, joints)
 
 def part1_calculate_T_pose(bvh_file_path):
     """请填写以下内容
@@ -30,6 +275,10 @@ def part1_calculate_T_pose(bvh_file_path):
     Tips:
         joint_name顺序应该和bvh一致
     """
+    source = load_bones_source(bvh_file_path)
+    tokens = token_pass(source)
+    root = parseRoot(tokens)
+    print(root)
     joint_name = None
     joint_parent = None
     joint_offset = None
