@@ -264,6 +264,31 @@ def parseRoot(tokens: List[TOKEN]) -> Root:
     (_r6,) = parseRPar(r5)
     return Root(name, offset, channels, joints)
 
+def evalRoot(root: Root) -> Tuple(List[str], List[int], np.ndarray):
+    (joint_name, joint_parent, joint_offset) = evalJoints(([root.name], [-1], [root.offset]), 0, root.joints)
+    offset = np.ndarray((len(joint_offset), 3), buffer=np.array(joint_offset), dtype=float)
+    return (joint_name, joint_parent, offset)
+
+def evalEnd(input: Tuple(List[str], List[int], List[List[float]]), parent: int, end: End) -> Tuple(List[str], List[int], List[List[float]]):
+    (joint_name, joint_parent, joint_offset) = input
+    return ([*joint_name, end.name], [*joint_parent, parent], [*joint_offset, end.offset])
+
+def evalJoint(input: Tuple(List[str], List[int], List[List[float]]), parent: int, joint: Joint) -> Tuple(List[str], List[int], List[List[float]]):
+    (joint_name, joint_parent, joint_offset) = input
+    cur = len(joint_parent)
+    return evalJoints(([*joint_name, joint.name], [*joint_parent, parent], [*joint_offset, joint.offset]), cur, joint.joints)
+
+def evalJoints(input: Tuple(List[str], List[int], List[List[float]]), parent: int, joints: List[Joint]) -> Tuple(List[str], List[int], List[List[float]]):
+    if isinstance(joints, End):
+        return evalEnd(input, parent, joints)
+    elif isinstance(joints, list):
+        res = input
+        for joint in joints:
+            res = evalJoint(res, parent, joint)
+        return res
+    else:
+        raise Exception('incorrect joints type')
+
 def part1_calculate_T_pose(bvh_file_path):
     """请填写以下内容
     输入： bvh 文件路径
@@ -278,12 +303,21 @@ def part1_calculate_T_pose(bvh_file_path):
     source = load_bones_source(bvh_file_path)
     tokens = token_pass(source)
     root = parseRoot(tokens)
-    print(root)
-    joint_name = None
-    joint_parent = None
-    joint_offset = None
-    return joint_name, joint_parent, joint_offset
+    res = evalRoot(root)
+    return res
 
+
+def acc_offset(joint_parent: List[int], joint_offset: List[float], cur: int, acc: float) -> float:
+    if (cur == -1):
+        return acc
+    else:
+        return acc_offset(joint_parent, joint_offset, joint_parent[cur], acc + joint_offset[cur])
+
+def acc_orientation(joint_parent: List[int], rotations: np.ndarray, cur: np.ndarray, acc: np.ndarray) -> np.ndarray:
+    if (cur == -1):
+        return acc
+    else:
+        return acc_orientation(joint_parent, rotations, joint_parent[cur], acc * rotations[cur])
 
 def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data, frame_id):
     """请填写以下内容
@@ -296,8 +330,42 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
     Tips:
         1. joint_orientations的四元数顺序为(x, y, z, w)
     """
-    joint_positions = None
-    joint_orientations = None
+    # root num 1 channels 6
+    # joints num 19 channels 19*3= 57
+    # end num 5 channels 0
+    print(joint_name)
+    print(joint_parent)
+    print(motion_data.shape)
+    
+    frame_motion_data = motion_data[frame_id]
+    joint_translation = frame_motion_data[0:3]
+    positions = []
+    for idx, offset in enumerate(joint_offset):
+        positions.append(joint_translation + acc_offset(joint_parent, joint_offset, idx, offset))
+    joint_positions = np.ndarray((len(positions), 3), buffer=np.array(positions), dtype=float)
+    print(joint_positions)
+    joints_num = len(joint_parent)
+    ends_map = [True] * joints_num
+    for i in range(joints_num):
+        par = joint_parent[i]
+        if (par >= 0):
+            ends_map[par] = False
+    rotations = np.ndarray((joints_num, 3), buffer=np.array([0,0,0] * joints_num), dtype=float)
+    p = 3
+    for i in range(joints_num):
+        if not ends_map[i]:
+            p_end = p + 3
+            rotations[i] = frame_motion_data[p : p_end]
+            p = p_end
+    print(rotations)
+    joint_rotations = []
+    for rotation in rotations:
+        joint_rotations.append(R.from_euler('XYZ', rotation, degrees=True).as_quat())
+    orientations = []
+    for idx, joint_rotation in enumerate(joint_rotations):
+        orientations.append(acc_orientation(joint_parent, joint_rotations, idx, joint_rotation))
+    print(orientations)
+    joint_orientations = np.ndarray((joints_num, 4), buffer=np.array(orientations), dtype=float)
     return joint_positions, joint_orientations
 
 

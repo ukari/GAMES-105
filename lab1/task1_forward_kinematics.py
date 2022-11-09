@@ -75,10 +75,10 @@ def main():
 
     # 请取消注释需要运行的代码
     # part1
-    part1(viewer, bvh_file_path)
+    # part1(viewer, bvh_file_path)
 
     # part2
-    # part2_one_pose(viewer, bvh_file_path)
+    part2_one_pose(viewer, bvh_file_path)
     # part2_animation(viewer, bvh_file_path)
 
     # part3
