@@ -27,6 +27,8 @@ def load_bones_source(bvh_file_path):
     with open(bvh_file_path, 'r') as f:
         lines = f.readlines()
         size = len(lines)
+        i = 0
+        j = 0
         for i in range(size):
             if lines[i].startswith('HIERARCHY'):
                 break
@@ -131,14 +133,14 @@ class End:
 class Joint:
     name: str
     offset: List[float]
-    channels: List[float]
+    channels: List[str]
     joints: Union[End, List[Joint]]
 
 @dataclass
 class Root:
     name: str
     offset: List[float]
-    channels: List[float]
+    channels: List[str]
     joints: Union[End, List[Joint]]
 
 # V variable, E terminal, S start variable, R relation
@@ -153,7 +155,7 @@ class Root:
 # Strings -> string | string, Strings
 
 def make_consume_parser(t: type):
-    def consume_parser(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+    def consume_parser(tokens: List[TOKEN]) -> Tuple[List[TOKEN]]:
         token, *xs = tokens
         if (isinstance(token, t)):
             return (xs,)
@@ -161,50 +163,50 @@ def make_consume_parser(t: type):
             raise Exception('incorrect ' + t.__name__ + ' token ' + str(token) + ', ' + str(tokens))
     return consume_parser
 
-def parseRootSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+def parseRootSymbol(tokens: List[TOKEN]) -> Tuple[List[TOKEN]]:
     return make_consume_parser(ROOT)(tokens)
 
-def parseStr(tokens: List[TOKEN]) -> Tuple(List[TOKEN], str):
+def parseStr(tokens: List[TOKEN]) -> Tuple[List[TOKEN], str]:
     token, *xs = tokens
     if (isinstance(token, STR)):
         return (xs, token.value)
     else:
         raise Exception('incorrect STR token ' + str(token) + ', ' + str(tokens))
 
-def parseFloat(tokens: List[TOKEN]) -> Tuple(List[TOKEN], str):
+def parseFloat(tokens: List[TOKEN]) -> Tuple[List[TOKEN], float]:
     token, *xs = tokens
     if (isinstance(token, FLOAT)):
         return (xs, token.value)
     else:
         raise Exception('incorrect FLOAT token ' + str(token) + ', ' + str(tokens))
 
-def parseInt(tokens: List[TOKEN]) -> Tuple(List[TOKEN], str):
+def parseInt(tokens: List[TOKEN]) -> Tuple[List[TOKEN], int]:
     token, *xs = tokens
     if (isinstance(token, INT)):
         return (xs, token.value)
     else:
         raise Exception('incorrect INT token ' + str(token))
 
-def parseLPar(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+def parseLPar(tokens: List[TOKEN]) -> Tuple[List[TOKEN]]:
     return make_consume_parser(LPAR)(tokens)
 
-def parseRPar(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+def parseRPar(tokens: List[TOKEN]) -> Tuple[List[TOKEN]]:
     return make_consume_parser(RPAR)(tokens)
 
-def parseOffsetSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+def parseOffsetSymbol(tokens: List[TOKEN]) -> Tuple[List[TOKEN]]:
     return make_consume_parser(OFFSET)(tokens)
 
-def parseOffset(tokens: List[TOKEN]) -> Tuple(List[TOKEN], List[float]):
+def parseOffset(tokens: List[TOKEN]) -> Tuple[List[TOKEN], List[float]]:
     (r0,) = parseOffsetSymbol(tokens)
     (r1, x) = parseFloat(r0)
     (r2, y) = parseFloat(r1)
     (r3, z) = parseFloat(r2)
     return (r3, [x, y, z])
 
-def parseChannelsSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+def parseChannelsSymbol(tokens: List[TOKEN]) -> Tuple[List[TOKEN]]:
     return make_consume_parser(CHANNELS)(tokens)
 
-def parseChannels(tokens: List[TOKEN]) -> Tuple(List[TOKEN], List[str]):
+def parseChannels(tokens: List[TOKEN]) -> Tuple[List[TOKEN], List[str]]:
     (r0,) = parseChannelsSymbol(tokens)
     (r1, num) = parseInt(r0)
     channels = []
@@ -213,10 +215,10 @@ def parseChannels(tokens: List[TOKEN]) -> Tuple(List[TOKEN], List[str]):
         channels.append(channelName)
     return (r1, channels)
 
-def parseJointSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+def parseJointSymbol(tokens: List[TOKEN]) -> Tuple[List[TOKEN]]:
     return make_consume_parser(JOINT)(tokens)
 
-def parseJoint(tokens: List[TOKEN]) -> Tuple(List[TOKEN], Joint):
+def parseJoint(tokens: List[TOKEN]) -> Tuple[List[TOKEN], Joint]:
     (r0,) = parseJointSymbol(tokens)
     (r1, name) = parseStr(r0)
     (r2,) = parseLPar(r1)
@@ -226,10 +228,10 @@ def parseJoint(tokens: List[TOKEN]) -> Tuple(List[TOKEN], Joint):
     (r6,) = parseRPar(r5)
     return (r6, Joint(name, offset, channels, joints))
 
-def parseEndSymbol(tokens: List[TOKEN]) -> Tuple(List[TOKEN]):
+def parseEndSymbol(tokens: List[TOKEN]) -> Tuple[List[TOKEN]]:
     return make_consume_parser(END)(tokens)
 
-def parseEnd(tokens: List[TOKEN], parent_name: str) -> Tuple(List[TOKEN], End):
+def parseEnd(tokens: List[TOKEN], parent_name: str) -> Tuple[List[TOKEN], End]:
     (r0,) = parseEndSymbol(tokens)
     (r1, _name) = parseStr(r0)
     (r2,) = parseLPar(r1)
@@ -237,10 +239,10 @@ def parseEnd(tokens: List[TOKEN], parent_name: str) -> Tuple(List[TOKEN], End):
     (r4,) = parseRPar(r3)
     return (r4, End(parent_name + '_end', offset))
 
-def parseJoints(tokens: List[TOKEN], parent_name: str) -> Tuple(List[TOKEN], Union(End, List[Joint])):
+def parseJoints(tokens: List[TOKEN], parent_name: str) -> Tuple[List[TOKEN], Union[End, List[Joint]]]:
+    joints = []
+    r1 = tokens
     try:
-        joints = []
-        r1 = tokens
         while True:
             (r1, joint) = parseJoint(r1)
             joints.append(joint)
@@ -264,21 +266,21 @@ def parseRoot(tokens: List[TOKEN]) -> Root:
     (_r6,) = parseRPar(r5)
     return Root(name, offset, channels, joints)
 
-def evalRoot(root: Root) -> Tuple(List[str], List[int], np.ndarray):
+def evalRoot(root: Root) -> Tuple[List[str], List[int], np.ndarray]:
     (joint_name, joint_parent, joint_offset) = evalJoints(([root.name], [-1], [root.offset]), 0, root.joints)
     offset = np.ndarray((len(joint_offset), 3), buffer=np.array(joint_offset), dtype=float)
     return (joint_name, joint_parent, offset)
 
-def evalEnd(input: Tuple(List[str], List[int], List[List[float]]), parent: int, end: End) -> Tuple(List[str], List[int], List[List[float]]):
+def evalEnd(input: Tuple[List[str], List[int], List[List[float]]], parent: int, end: End) -> Tuple[List[str], List[int], List[List[float]]]:
     (joint_name, joint_parent, joint_offset) = input
     return ([*joint_name, end.name], [*joint_parent, parent], [*joint_offset, end.offset])
 
-def evalJoint(input: Tuple(List[str], List[int], List[List[float]]), parent: int, joint: Joint) -> Tuple(List[str], List[int], List[List[float]]):
+def evalJoint(input: Tuple[List[str], List[int], List[List[float]]], parent: int, joint: Joint) -> Tuple[List[str], List[int], List[List[float]]]:
     (joint_name, joint_parent, joint_offset) = input
     cur = len(joint_parent)
     return evalJoints(([*joint_name, joint.name], [*joint_parent, parent], [*joint_offset, joint.offset]), cur, joint.joints)
 
-def evalJoints(input: Tuple(List[str], List[int], List[List[float]]), parent: int, joints: List[Joint]) -> Tuple(List[str], List[int], List[List[float]]):
+def evalJoints(input: Tuple[List[str], List[int], List[List[float]]], parent: int, joints: Union[End, List[Joint]]) -> Tuple[List[str], List[int], List[List[float]]]:
     if isinstance(joints, End):
         return evalEnd(input, parent, joints)
     elif isinstance(joints, list):
@@ -306,18 +308,13 @@ def part1_calculate_T_pose(bvh_file_path):
     res = evalRoot(root)
     return res
 
-
-def acc_offset(joint_parent: List[int], joint_offset: List[float], cur: int, acc: float) -> float:
-    if (cur == -1):
-        return acc
-    else:
-        return acc_offset(joint_parent, joint_offset, joint_parent[cur], acc + joint_offset[cur])
-
-def acc_orientation(joint_parent: List[int], rotations: np.ndarray, cur: np.ndarray, acc: np.ndarray) -> np.ndarray:
+'''
+def acc_orientation(joint_parent: List[int], rotations: np.ndarray, cur: int, acc: np.ndarray) -> np.ndarray:
     if (cur == -1):
         return acc
     else:
         return acc_orientation(joint_parent, rotations, joint_parent[cur], acc * rotations[cur])
+'''
 
 def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data, frame_id):
     """请填写以下内容
@@ -333,18 +330,14 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
     # root num 1 channels 6
     # joints num 19 channels 19*3= 57
     # end num 5 channels 0
-    print(joint_name)
-    print(joint_parent)
-    print(motion_data.shape)
     
     frame_motion_data = motion_data[frame_id]
     joint_translation = frame_motion_data[0:3]
-    positions = []
-    for idx, offset in enumerate(joint_offset):
-        positions.append(joint_translation + acc_offset(joint_parent, joint_offset, idx, offset))
-    joint_positions = np.ndarray((len(positions), 3), buffer=np.array(positions), dtype=float)
-    print(joint_positions)
+    
+    #joint_positions = np.ndarray((len(positions), 3), buffer=np.array(positions), dtype=float)
+    #print(joint_positions)
     joints_num = len(joint_parent)
+
     ends_map = [True] * joints_num
     for i in range(joints_num):
         par = joint_parent[i]
@@ -357,15 +350,27 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
             p_end = p + 3
             rotations[i] = frame_motion_data[p : p_end]
             p = p_end
-    print(rotations)
-    joint_rotations = []
-    for rotation in rotations:
-        joint_rotations.append(R.from_euler('XYZ', rotation, degrees=True).as_quat())
     orientations = []
-    for idx, joint_rotation in enumerate(joint_rotations):
-        orientations.append(acc_orientation(joint_parent, joint_rotations, idx, joint_rotation))
-    print(orientations)
+    for i in range(joints_num):
+        par = joint_parent[i]
+        rotation = R.from_euler('XYZ', rotations[i], degrees=True).as_quat()
+        if (par == -1):
+            orientations.append(rotation)
+        else:
+            orientations.append((R.from_quat(orientations[par]) * R.from_quat(rotation)).as_quat())
+
+    positions = []
+    for i in range(joints_num):
+        par = joint_parent[i]
+        v = np.array(joint_offset[i]).transpose()
+        if (par == -1):
+            positions.append(joint_translation + np.array(joint_offset[i]))
+        else:
+            m = R.from_quat(orientations[par]).as_matrix()
+            positions.append(m.dot(v) + positions[par])
+
     joint_orientations = np.ndarray((joints_num, 4), buffer=np.array(orientations), dtype=float)
+    joint_positions = np.ndarray((joints_num, 3), buffer=np.array(positions), dtype=float)
     return joint_positions, joint_orientations
 
 
