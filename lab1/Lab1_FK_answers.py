@@ -316,6 +316,15 @@ def acc_orientation(joint_parent: List[int], rotations: np.ndarray, cur: int, ac
         return acc_orientation(joint_parent, rotations, joint_parent[cur], acc * rotations[cur])
 '''
 
+def get_ends_map(joint_parent: List[int]) -> List[bool]:
+    joints_num = len(joint_parent)
+    ends_map = [True] * joints_num
+    for i in range(joints_num):
+        par = joint_parent[i]
+        if (par >= 0):
+            ends_map[par] = False
+    return ends_map
+
 def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data, frame_id):
     """请填写以下内容
     输入: part1 获得的关节名字，父节点列表，偏移量列表
@@ -337,12 +346,7 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
     #joint_positions = np.ndarray((len(positions), 3), buffer=np.array(positions), dtype=float)
     #print(joint_positions)
     joints_num = len(joint_parent)
-
-    ends_map = [True] * joints_num
-    for i in range(joints_num):
-        par = joint_parent[i]
-        if (par >= 0):
-            ends_map[par] = False
+    ends_map = get_ends_map(joint_parent)
     rotations = np.ndarray((joints_num, 3), buffer=np.array([0,0,0] * joints_num), dtype=float)
     p = 3
     for i in range(joints_num):
@@ -374,6 +378,16 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
     return joint_positions, joint_orientations
 
 
+def get_ends_acc_map(ends_map: List[bool]) -> List[int]:
+    joints_num = len(ends_map)
+    ends_acc_map = [0] * joints_num
+    acc = 0
+    for i in range(joints_num):
+        if ends_map[i]:
+            acc = acc + 1
+        ends_acc_map[i] = acc
+    return ends_acc_map
+
 def part3_retarget_func(T_pose_bvh_path, A_pose_bvh_path):
     """
     将 A-pose的bvh重定向到T-pose上
@@ -383,5 +397,73 @@ def part3_retarget_func(T_pose_bvh_path, A_pose_bvh_path):
     Tips:
         两个bvh的joint name顺序可能不一致哦(
     """
-    motion_data = None
+    t_joint_name, t_joint_parent, t_joint_offset = part1_calculate_T_pose(T_pose_bvh_path)
+    a_joint_name, a_joint_parent, a_joint_offset = part1_calculate_T_pose(A_pose_bvh_path)
+    print(t_joint_name)
+    print(a_joint_name)
+    joints_num = len(t_joint_name)
+    a_t_map = [0] * joints_num
+    for ai in range(joints_num):
+        ti = t_joint_name.index(a_joint_name[ai])
+        print("ai", ai, "ti", ti, a_joint_name[ai])
+        a_t_map[ai] = ti
+    motion_data = load_motion_data(A_pose_bvh_path)
+    a_ends_map = get_ends_map(a_joint_parent)
+    a_ends_acc_map = get_ends_acc_map(a_ends_map)
+    t_ends_map = get_ends_map(t_joint_parent)
+    t_ends_acc_map = get_ends_acc_map(t_ends_map)
+
+    cycle_fragment = []
+    for ai in range(joints_num):
+        if not a_ends_map[ai]:
+            ti = a_t_map[ai]
+            real_ai = ai - a_ends_acc_map[ai]
+            real_ti = ti - t_ends_acc_map[ti]
+            if (real_ai != real_ti):
+                cycle_fragment.append([real_ai, real_ti])
+
+    cycles = calculate_cycles(cycle_fragment, [])
+    print(cycle_fragment)
+    print(cycles)
+    pt = ['RootJoint', 'lHip', 'lKnee', 'lAnkle', 'lToeJoint', 'pelvis_lowerback', 'lowerback_torso', 'lTorso_Clavicle', 'lShoulder', 'lElbow', 'lWrist', 'rTorso_Clavicle', 'rShoulder', 'rElbow', 'rWrist', 'torso_head', 'rHip', 'rKnee', 'rAnkle', 'rToeJoint']
+    pa = ['RootJoint', 'lHip', 'lKnee', 'lAnkle', 'lToeJoint', 'rHip', 'rKnee', 'rAnkle', 'rToeJoint', 'pelvis_lowerback', 'lowerback_torso', 'torso_head', 'lTorso_Clavicle', 'lShoulder', 'lElbow', 'lWrist', 'rTorso_Clavicle', 'rShoulder', 'rElbow', 'rWrist']
+    for cycle in cycles:
+        print(pt)
+        print(pa)
+        print(cycle)
+        swap = 'None'
+        for i in range(len(cycle)):
+            real_ai = cycle[i]
+            print('swap', swap, pa[real_ai])
+            pa[real_ai], swap = swap, pa[real_ai]
+    print(pa)
+    for frame_motion_data in motion_data:
+        for cycle in cycles:
+            reg = np.array([0,0,0])
+            for i in range(len(cycle) - 1):
+                real_ai = cycle[i]
+                ap = 3 + real_ai * 3
+                reg, frame_motion_data[ap: ap + 3] = frame_motion_data[ap: ap + 3].copy(), reg
+        
+    print(len(motion_data))
+    print(len(motion_data[0]))
     return motion_data
+
+def calculate_cycles(cycle_fragment: List[List[int]], cycles: List[List[int]]) -> List[List[int]]:
+    if (len(cycle_fragment) > 0):
+        x, *xs = cycle_fragment
+        next_xs = []
+        for frag in xs:
+            frag_x, *frag_xs = frag
+            if x[len(x) - 1] == frag_x:
+                x = [*x, *frag_xs]
+            else:
+                next_xs.append(frag)
+        xh, *xb, xt = x
+        if (xh == xt):
+            return calculate_cycles(next_xs, [[xh, *xb, xt], *cycles])
+        else:
+            next_xs.append(x)
+            return calculate_cycles(next_xs, cycles)
+    else:
+        return cycles
