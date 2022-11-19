@@ -14,7 +14,13 @@ def part1_inverse_kinematics(meta_data, joint_positions, joint_orientations, tar
         joint_positions: 计算得到的关节位置，是一个numpy数组，shape为(M, 3)，M为关节数
         joint_orientations: 计算得到的关节朝向，是一个numpy数组，shape为(M, 4)，M为关节数
     """
-    
+    end_joint = meta_data.end_joint
+    root_joint = meta_data.root_joint
+    joint_parent = meta_data.joint_parent
+    joint_name = meta_data.joint_name
+    joint_initial_position = meta_data.joint_initial_position
+    print(joint_initial_position == joint_positions)
+    print(joint_positions)
     
     return joint_positions, joint_orientations
 
