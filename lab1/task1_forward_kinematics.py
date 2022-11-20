@@ -68,8 +68,10 @@ def part3_retarget(viewer, T_pose_bvh_path, A_pose_bvh_path):
     viewer.run()
 
 def part3_one_pose_debug(viewer, T_pose_bvh_path, A_pose_bvh_path):
-    joint_name, joint_parent, joint_offset = part1_calculate_T_pose(T_pose_bvh_path)
-    retarget_motion_data = part3_retarget_func(T_pose_bvh_path, A_pose_bvh_path)
+    #joint_name, joint_parent, joint_offset = part1_calculate_T_pose(T_pose_bvh_path)
+    #retarget_motion_data = part3_retarget_func(T_pose_bvh_path, A_pose_bvh_path)
+    joint_name, joint_parent, joint_offset = part1_calculate_T_pose(A_pose_bvh_path)
+    retarget_motion_data = load_motion_data(A_pose_bvh_path)
     joint_positions, joint_orientations = part2_forward_kinematics(joint_name, joint_parent, joint_offset, retarget_motion_data, 0)
     viewer.show_pose(joint_name, joint_positions, joint_orientations)
     viewer.run()
@@ -88,8 +90,8 @@ def main():
     # part2_animation(viewer, bvh_file_path)
 
     # part3
-    part3_one_pose_debug(viewer, "data/walk60.bvh", "data/A_pose_run.bvh")
-    #part3_retarget(viewer, "data/walk60.bvh", "data/A_pose_run.bvh")
+    # part3_one_pose_debug(viewer, "data/walk60.bvh", "data/A_pose_run.bvh")
+    part3_retarget(viewer, "data/walk60.bvh", "data/A_pose_run.bvh")
 
 
 if __name__ == "__main__":
